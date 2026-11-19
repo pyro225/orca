@@ -2,7 +2,8 @@
 
 // Only clear asks for a real person; named public figures are left to the agent's own refusal.
 const REAL_PERSON_PATTERNS: readonly RegExp[] = [
-  /(^|\b(of|like|as|depicting|draw|make|show) )(me|myself|us)\b/i,
+  /(^|\b(of|like|as|depicting) )(me|myself|us)\b/i,
+  /\b(me|myself|us) as\b/i,
   /\b(my|our) (face|photo|picture|selfie|likeness)\b/i,
   /\b(my|our) (wife|husband|partner|boyfriend|girlfriend|son|daughter|kids?|child|children|mom|mother|dad|father|brother|sister|friend|boss|coworker|colleague)\b/i,
   /\b(real|actual) (person|people|human)\b/i,

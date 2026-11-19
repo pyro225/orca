@@ -7,6 +7,7 @@ describe('describesRealPerson', () => {
     'my wife riding a dragon',
     'me as a superhero',
     'my coworker as a wizard',
+    'a portrait of me',
     'my face as a cartoon',
     'a celebrity in a spacesuit'
   ])('turns away %s', (description) => {
@@ -17,6 +18,8 @@ describe('describesRealPerson', () => {
     'a friendly orange fox astronaut',
     'a fox that reminds me of autumn',
     'a photo of a cat',
+    'draw me a fox',
+    'show us a cat',
     'lion, king of the jungle',
     'portrait of Sherlock Holmes as a cat',
     'the queen of hearts card'

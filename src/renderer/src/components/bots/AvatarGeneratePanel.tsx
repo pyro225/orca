@@ -94,7 +94,11 @@ export function AvatarGeneratePanel({
 }): React.JSX.Element {
   const t = useTranslate()
   const failureMessage = useFailureMessage()
-  const agentLabel = AVATAR_IMAGE_AGENT_LABELS[capability.agent]
+  // The run's own agent: main may have picked another one than an older probe named.
+  const agent =
+    (state.kind === 'running' || state.kind === 'error' ? state.agent : undefined) ??
+    capability.agent
+  const agentLabel = AVATAR_IMAGE_AGENT_LABELS[agent]
   const running = state.kind === 'running'
   const signedOut = capability.status === 'signed-out'
   return (

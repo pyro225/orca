@@ -38,8 +38,8 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
 
 type AgentExit =
   | { kind: 'exit'; code: number | null; stdout: string; stderr: string }
-  | { kind: 'timed-out' }
-  | { kind: 'error' }
+  | { kind: 'timed-out'; stdout: string }
+  | { kind: 'error'; stdout: string }
 
 export type AvatarRunOutcome =
   | { ok: true; image: GeneratedAvatarImage }
@@ -177,7 +177,7 @@ export async function runAvatarImageAgent(input: {
         })
       } catch (error) {
         console.error('[avatar-generation] Failed to start the image agent:', error)
-        resolve({ kind: 'error' })
+        resolve({ kind: 'error', stdout: '' })
         return
       }
       let stdout = ''
@@ -190,7 +190,7 @@ export async function runAvatarImageAgent(input: {
       }
       const timer = setTimeout(() => {
         stop()
-        finish({ kind: 'timed-out' })
+        finish({ kind: 'timed-out', stdout })
       }, AVATAR_RUN_TIMEOUT_MS)
       const onAbort = (): void => stop()
       signal.addEventListener('abort', onAbort, { once: true })
@@ -206,21 +206,24 @@ export async function runAvatarImageAgent(input: {
         signal.removeEventListener('abort', onAbort)
         resolve(value)
       }
-      child.stdout?.on('data', (chunk: Buffer) => {
+      // Decoded per stream, so a character split across chunks stays whole (paths can be non-ASCII).
+      child.stdout?.setEncoding('utf8')
+      child.stderr?.setEncoding('utf8')
+      child.stdout?.on('data', (chunk: string) => {
         if (stdout.length < MAX_OUTPUT_CHARS) {
-          stdout += chunk.toString('utf-8')
+          stdout += chunk
         }
       })
-      child.stderr?.on('data', (chunk: Buffer) => {
+      child.stderr?.on('data', (chunk: string) => {
         if (stderr.length < MAX_OUTPUT_CHARS) {
-          stderr += chunk.toString('utf-8')
+          stderr += chunk
         }
       })
       child.on('error', (error: Error) => {
         if (!('code' in error) || error.code !== 'ENOENT') {
           console.error('[avatar-generation] Image agent failed:', error)
         }
-        finish({ kind: 'error' })
+        finish({ kind: 'error', stdout })
       })
       child.on('close', (code: number | null) => finish({ kind: 'exit', code, stdout, stderr }))
       if (agent === 'codex') {
@@ -228,6 +231,11 @@ export async function runAvatarImageAgent(input: {
         child.stdin?.end(prompt)
       }
     })
+    // The run is one-off, even when canceled or timed out: its images and Grok session
+    // must not pile up or show in session history.
+    const grokSessionDirs = agent === 'grok' ? await grokRunSessionDirs(cwd, env) : []
+    const codexDir = agent === 'codex' ? codexImagesDir(exit.stdout, env) : null
+    cleanup = codexDir ? [codexDir] : grokSessionDirs
     if (signal.aborted) {
       return { ok: false, error: 'canceled' }
     }
@@ -237,10 +245,6 @@ export async function runAvatarImageAgent(input: {
     if (exit.kind === 'timed-out') {
       return { ok: false, error: 'timed-out' }
     }
-    const grokSessionDirs = agent === 'grok' ? await grokRunSessionDirs(cwd, env) : []
-    const codexDir = agent === 'codex' ? codexImagesDir(exit.stdout, env) : null
-    // The run is one-off: its images and Grok session must not pile up or show in session history.
-    cleanup = codexDir ? [codexDir] : grokSessionDirs
     const path = await imagePath(agent, exit.stdout, env, grokSessionDirs).catch(() => null)
     const image = path ? await readImage(path).catch(() => null) : null
     if (image) {

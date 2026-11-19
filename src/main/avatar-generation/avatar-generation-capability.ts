@@ -6,7 +6,6 @@ import type {
   AvatarImageAgent
 } from '../../shared/avatar-generation/avatar-generation-contract'
 import { resolveGrokHomeDir } from '../../shared/agent-hook-listener/providers/grok/grok-session-paths'
-import { probeCodexAuthPresence } from '../rate-limits/providers/codex/codex-auth-presence'
 import { spawnSourceControlAgent } from '../text-generation/execution/source-control-agent-launch'
 import { killSourceControlAgentProcess } from '../text-generation/execution/source-control-agent-termination'
 
@@ -63,9 +62,8 @@ async function probeCodex(env: NodeJS.ProcessEnv | undefined): Promise<AgentProb
   if (features === null || !codexImageGenerationEnabled(features)) {
     return 'unavailable'
   }
-  // Only a readable home without auth.json proves signed out; a slow disk leaves the run to say.
-  const auth = await probeCodexAuthPresence(env?.CODEX_HOME)
-  return auth === 'absent' ? 'signed-out' : 'ready'
+  // Codex's own check covers keyring logins too, which keep no auth.json.
+  return (await quickOutput('codex', ['login', 'status'], env)) === null ? 'signed-out' : 'ready'
 }
 
 async function probeGrok(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe> {
@@ -83,12 +81,20 @@ async function probeGrok(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe
 
 export const AVATAR_IMAGE_AGENT_ORDER: readonly AvatarImageAgent[] = ['codex', 'grok']
 
+/** `null` env: the agent's selected account couldn't be prepared, so it must not run. */
+export type AvatarAgentEnv = (
+  agent: AvatarImageAgent
+) => Promise<NodeJS.ProcessEnv | undefined | null>
+
 export async function probeAvatarGenerationCapability(
-  envFor: (agent: AvatarImageAgent) => Promise<NodeJS.ProcessEnv | undefined>
+  envFor: AvatarAgentEnv
 ): Promise<AvatarGenerationCapability> {
   const probes = await Promise.all(
     AVATAR_IMAGE_AGENT_ORDER.map(async (agent) => {
       const env = await envFor(agent)
+      if (env === null) {
+        return { agent, probe: 'unavailable' as const }
+      }
       return { agent, probe: await (agent === 'codex' ? probeCodex(env) : probeGrok(env)) }
     })
   )

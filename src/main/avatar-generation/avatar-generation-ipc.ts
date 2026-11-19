@@ -6,8 +6,7 @@ import {
   AVATAR_GENERATION_VARIANTS,
   MAX_AVATAR_DESCRIPTION_CHARS,
   type AvatarGenerationCapability,
-  type AvatarGenerationResult,
-  type AvatarImageAgent
+  type AvatarGenerationResult
 } from '../../shared/avatar-generation/avatar-generation-contract'
 import {
   avatarGenerationPrompt,
@@ -17,7 +16,10 @@ import {
   prepareLocalCommitMessageAgentEnv,
   type CommitMessageAgentEnvironmentResolvers
 } from '../text-generation/execution/commit-message-agent-environment'
-import { probeAvatarGenerationCapability } from './avatar-generation-capability'
+import {
+  probeAvatarGenerationCapability,
+  type AvatarAgentEnv
+} from './avatar-generation-capability'
 import { runAvatarImageAgent, type AvatarRunOutcome } from './avatar-image-agent-run'
 
 const GenerateArgs = z.object({
@@ -49,9 +51,10 @@ export function registerAvatarGenerationHandlers(
   const runs = new Map<string, AbortController>()
   let cached: { at: number; value: Promise<AvatarGenerationCapability> } | null = null
 
-  const envFor = async (agent: AvatarImageAgent): Promise<NodeJS.ProcessEnv | undefined> => {
+  // Never fall back to the default account when the selected one fails to prepare.
+  const envFor: AvatarAgentEnv = async (agent) => {
     const prepared = await prepareLocalCommitMessageAgentEnv(agent, agentEnvironment())
-    return prepared.ok ? prepared.env : undefined
+    return prepared.ok ? prepared.env : null
   }
   const capability = (): Promise<AvatarGenerationCapability> => {
     if (!cached || Date.now() - cached.at > CAPABILITY_TTL_MS) {
@@ -103,6 +106,9 @@ export function registerAvatarGenerationHandlers(
         if (controller.signal.aborted) {
           return { ok: false, error: 'canceled', agent }
         }
+        if (env === null) {
+          return { ok: false, error: 'failed', agent }
+        }
         const prompt = avatarGenerationPrompt(description)
         // Separate runs in parallel: one image each, so two options take as long as one.
         const outcomes = await Promise.all(
@@ -123,6 +129,8 @@ export function registerAvatarGenerationHandlers(
         }
         return { ...failure, agent }
       } finally {
+        // A run that threw must not leave its sibling spending usage for nobody.
+        controller.abort()
         if (runs.get(requestId) === controller) {
           runs.delete(requestId)
         }

@@ -210,15 +210,19 @@ export function BotPicturePicker({
     ? custom.after + 1
     : mascotIndex + (custom && mascotIndex > custom.after ? 1 : 0)
   // A new picture replaces the custom one in place, or lands beside the mascot shown.
+  const [tab, setTab] = useState<'choose' | 'generate'>('choose')
   const intake = useBotAvatarIntake({
     rootRef,
-    onPicture: (png) => onUpload(png, showingCustom ? custom.after : mascotIndex),
+    onPicture: (png) => {
+      // Paste or drop on Generate still lands; Choose shows it with its Undo.
+      setTab('choose')
+      onUpload(png, showingCustom ? custom.after : mascotIndex)
+    },
     undoable: onUndo !== undefined
   })
   const { line } = intake
   const dropping = line.kind === 'drop'
   const generation = useAvatarGeneration()
-  const [tab, setTab] = useState<'choose' | 'generate'>('choose')
   const [description, setDescription] = useState('')
   const choose = (
     <>
@@ -328,7 +332,6 @@ export function BotPicturePicker({
                 // The option goes through the same crop and save as an upload.
                 intake.take(dataUrlBlob(image))
                 generation.reset()
-                setTab('choose')
               }}
             />
           </TabsContent>
