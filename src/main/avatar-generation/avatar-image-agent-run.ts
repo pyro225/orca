@@ -183,19 +183,18 @@ export async function runAvatarImageAgent(input: {
       let stdout = ''
       let stderr = ''
       let done = false
-      const stop = (): void => {
-        void killSourceControlAgentProcess(child).catch((error: unknown) => {
+      const stop = (): Promise<void> =>
+        killSourceControlAgentProcess(child).catch((error: unknown) => {
           console.error('[avatar-generation] Failed to stop the image agent:', error)
         })
-      }
+      // Cleanup follows the stop, so a dying agent can't write into a folder being removed.
       const timer = setTimeout(() => {
-        stop()
-        finish({ kind: 'timed-out', stdout })
+        void stop().then(() => finish({ kind: 'timed-out', stdout }))
       }, AVATAR_RUN_TIMEOUT_MS)
-      const onAbort = (): void => stop()
+      const onAbort = (): void => void stop()
       signal.addEventListener('abort', onAbort, { once: true })
       if (signal.aborted) {
-        stop()
+        void stop()
       }
       function finish(value: AgentExit): void {
         if (done) {

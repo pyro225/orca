@@ -4,6 +4,7 @@
 const REAL_PERSON_PATTERNS: readonly RegExp[] = [
   /(^|\b(of|like|as|depicting) )(me|myself|us)\b/i,
   /\b(me|myself|us) as\b/i,
+  /\b(draw|make|paint|show|create) (me|myself|us)\s*[.!]?\s*$/i,
   /\b(my|our) (face|photo|picture|selfie|likeness)\b/i,
   /\b(my|our) (wife|husband|partner|boyfriend|girlfriend|son|daughter|kids?|child|children|mom|mother|dad|father|brother|sister|friend|boss|coworker|colleague)\b/i,
   /\b(real|actual) (person|people|human)\b/i,
