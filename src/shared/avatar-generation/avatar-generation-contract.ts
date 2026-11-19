@@ -1,17 +1,13 @@
 // Generating an avatar with an image-capable agent the user already has installed and signed in.
 
-/** Agents whose CLI can save a generated image without a prompt. */
-export type AvatarImageAgent = 'codex' | 'grok'
+/** Agents whose CLI can save a generated image without a prompt, in preference order. */
+export const AVATAR_IMAGE_AGENTS = ['codex', 'grok'] as const
+export type AvatarImageAgent = (typeof AVATAR_IMAGE_AGENTS)[number]
 
-export const AVATAR_IMAGE_AGENT_LABELS: Record<AvatarImageAgent, string> = {
-  codex: 'Codex',
-  grok: 'Grok'
-}
+export type AvatarImageAgentStatus = { agent: AvatarImageAgent; status: 'ready' | 'signed-out' }
 
-export type AvatarGenerationCapability =
-  | { status: 'ready'; agent: AvatarImageAgent }
-  | { status: 'signed-out'; agent: AvatarImageAgent }
-  | { status: 'unavailable' }
+/** Installed agents that can make images, in preference order; empty hides Generate. */
+export type AvatarGenerationCapability = { agents: AvatarImageAgentStatus[] }
 
 export type AvatarGenerationFailure =
   | 'unavailable'
@@ -35,6 +31,10 @@ export const MAX_AVATAR_DESCRIPTION_CHARS = 500
 
 export type AvatarGenerationApi = {
   capability: () => Promise<AvatarGenerationCapability>
-  generate: (args: { requestId: string; description: string }) => Promise<AvatarGenerationResult>
+  generate: (args: {
+    requestId: string
+    description: string
+    agent: AvatarImageAgent
+  }) => Promise<AvatarGenerationResult>
   cancel: (args: { requestId: string }) => Promise<void>
 }

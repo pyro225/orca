@@ -297,7 +297,7 @@ export function BotPicturePicker({
       className="relative before:pointer-events-none before:absolute before:-inset-x-2.5 before:-top-2.5 before:-bottom-1.5 before:hidden before:rounded-[14px] before:border-[1.5px] before:border-dashed before:border-foreground/35 data-dropping:before:block"
     >
       {/* Generate shows only when an installed, image-capable agent can run here. */}
-      {generation.capability.status === 'unavailable' ? (
+      {generation.agent === null ? (
         choose
       ) : (
         <Tabs
@@ -316,7 +316,9 @@ export function BotPicturePicker({
           <TabsContent value="choose">{choose}</TabsContent>
           <TabsContent value="generate">
             <AvatarGeneratePanel
-              capability={generation.capability}
+              agents={generation.agents}
+              agent={generation.agent}
+              onAgentChange={generation.selectAgent}
               state={generation.state}
               description={description}
               onDescriptionChange={(next) => {

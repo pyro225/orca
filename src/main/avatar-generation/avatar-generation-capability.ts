@@ -1,9 +1,10 @@
 // Which installed agent can make an avatar right now: Codex first, then Grok.
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
-import type {
-  AvatarGenerationCapability,
-  AvatarImageAgent
+import {
+  AVATAR_IMAGE_AGENTS,
+  type AvatarGenerationCapability,
+  type AvatarImageAgent
 } from '../../shared/avatar-generation/avatar-generation-contract'
 import { resolveGrokHomeDir } from '../../shared/agent-hook-listener/providers/grok/grok-session-paths'
 import { spawnSourceControlAgent } from '../text-generation/execution/source-control-agent-launch'
@@ -79,8 +80,6 @@ async function probeGrok(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe
   )
 }
 
-export const AVATAR_IMAGE_AGENT_ORDER: readonly AvatarImageAgent[] = ['codex', 'grok']
-
 /** `null` env: the agent's selected account couldn't be prepared, so it must not run. */
 export type AvatarAgentEnv = (
   agent: AvatarImageAgent
@@ -90,7 +89,7 @@ export async function probeAvatarGenerationCapability(
   envFor: AvatarAgentEnv
 ): Promise<AvatarGenerationCapability> {
   const probes = await Promise.all(
-    AVATAR_IMAGE_AGENT_ORDER.map(async (agent) => {
+    AVATAR_IMAGE_AGENTS.map(async (agent) => {
       const env = await envFor(agent)
       if (env === null) {
         return { agent, probe: 'unavailable' as const }
@@ -98,10 +97,9 @@ export async function probeAvatarGenerationCapability(
       return { agent, probe: await (agent === 'codex' ? probeCodex(env) : probeGrok(env)) }
     })
   )
-  const ready = probes.find((entry) => entry.probe === 'ready')
-  if (ready) {
-    return { status: 'ready', agent: ready.agent }
+  return {
+    agents: probes.flatMap(({ agent, probe }) =>
+      probe === 'unavailable' ? [] : [{ agent, status: probe }]
+    )
   }
-  const signedOut = probes.find((entry) => entry.probe === 'signed-out')
-  return signedOut ? { status: 'signed-out', agent: signedOut.agent } : { status: 'unavailable' }
 }

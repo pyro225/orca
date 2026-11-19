@@ -4,6 +4,7 @@ import { ipcMain } from 'electron'
 import { z } from 'zod'
 import {
   AVATAR_GENERATION_VARIANTS,
+  AVATAR_IMAGE_AGENTS,
   MAX_AVATAR_DESCRIPTION_CHARS,
   type AvatarGenerationCapability,
   type AvatarGenerationResult
@@ -24,7 +25,8 @@ import { runAvatarImageAgent, type AvatarRunOutcome } from './avatar-image-agent
 
 const GenerateArgs = z.object({
   requestId: z.string().min(1).max(128),
-  description: z.string().trim().min(1).max(MAX_AVATAR_DESCRIPTION_CHARS)
+  description: z.string().trim().min(1).max(MAX_AVATAR_DESCRIPTION_CHARS),
+  agent: z.enum(AVATAR_IMAGE_AGENTS)
 })
 const CancelArgs = z.object({ requestId: z.string().min(1).max(128) })
 
@@ -71,7 +73,7 @@ export function registerAvatarGenerationHandlers(
   ipcMain.handle('avatarGeneration:capability', () =>
     capability().catch((error: unknown) => {
       console.error('[avatar-generation] Capability probe failed:', error)
-      return { status: 'unavailable' } satisfies AvatarGenerationCapability
+      return { agents: [] } satisfies AvatarGenerationCapability
     })
   )
 
@@ -79,7 +81,7 @@ export function registerAvatarGenerationHandlers(
   ipcMain.handle(
     'avatarGeneration:generate',
     async (_event, raw: unknown): Promise<AvatarGenerationResult> => {
-      const { requestId, description } = GenerateArgs.parse(raw)
+      const { requestId, description, agent } = GenerateArgs.parse(raw)
       // The renderer checks too; this keeps any other caller from skipping it.
       if (describesRealPerson(description)) {
         return { ok: false, error: 'real-person' }
@@ -88,19 +90,21 @@ export function registerAvatarGenerationHandlers(
       runs.get(requestId)?.abort()
       const controller = new AbortController()
       runs.set(requestId, controller)
-      const found = await capability().catch(() => null)
-      if (!found || found.status === 'unavailable' || found.status === 'signed-out') {
+      // The picker offers only agents the probe found; a stale pick is refused, not swapped.
+      const found = (await capability().catch(() => null))?.agents.find(
+        (entry) => entry.agent === agent
+      )
+      if (!found || found.status === 'signed-out') {
         if (runs.get(requestId) === controller) {
           runs.delete(requestId)
         }
-        if (found?.status === 'signed-out') {
+        if (found) {
           // The next click probes again, so signing in elsewhere takes effect at once.
           cached = null
-          return { ok: false, error: 'signed-out', agent: found.agent }
+          return { ok: false, error: 'signed-out', agent }
         }
-        return { ok: false, error: 'unavailable' }
+        return { ok: false, error: 'unavailable', agent }
       }
-      const { agent } = found
       try {
         const env = await envFor(agent)
         if (controller.signal.aborted) {

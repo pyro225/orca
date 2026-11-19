@@ -301,7 +301,12 @@ async function openGenerate(frame: HTMLElement, description?: string): Promise<v
   await settle(600)
 }
 
-const READY: AvatarGenerationCapability = { status: 'ready', agent: 'codex' }
+const READY: AvatarGenerationCapability = {
+  agents: [
+    { agent: 'codex', status: 'ready' },
+    { agent: 'grok', status: 'ready' }
+  ]
+}
 
 export const generateIdle = defineFixture({
   width: 420,
@@ -340,7 +345,18 @@ export const generateRealPerson = defineFixture({
 
 export const generateSignedOut = defineFixture({
   width: 420,
-  setup: stubGeneration({ status: 'signed-out', agent: 'codex' }, 'options'),
+  setup: stubGeneration({ agents: [{ agent: 'codex', status: 'signed-out' }] }, 'options'),
   render: () => <Settings />,
   interact: (frame) => openGenerate(frame)
+})
+
+export const generateAgentPicker = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'options'),
+  render: () => <Settings />,
+  interact: async (frame) => {
+    await openGenerate(frame)
+    document.querySelector<HTMLButtonElement>('[role="tabpanel"] button[role="combobox"]')?.click()
+    await settle()
+  }
 })

@@ -6,12 +6,15 @@ import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Textarea } from '@/components/ui/textarea'
 import { useTranslate } from '@/i18n/use-translate'
+import AgentCombobox from '@/components/agent/AgentCombobox'
+import { getAgentCatalog, getAgentLabel } from '@/lib/agent-catalog/agent-catalog'
 import {
   AVATAR_GENERATION_VARIANTS,
-  AVATAR_IMAGE_AGENT_LABELS,
+  AVATAR_IMAGE_AGENTS,
   MAX_AVATAR_DESCRIPTION_CHARS,
-  type AvatarGenerationCapability,
-  type AvatarGenerationFailure
+  type AvatarGenerationFailure,
+  type AvatarImageAgent,
+  type AvatarImageAgentStatus
 } from '../../../../shared/avatar-generation/avatar-generation-contract'
 import type { AvatarGenerationState } from './use-avatar-generation'
 
@@ -71,8 +74,14 @@ function Elapsed({ since }: { since: number }): React.JSX.Element {
   )
 }
 
+function isAvatarImageAgent(agent: string): agent is AvatarImageAgent {
+  return AVATAR_IMAGE_AGENTS.some((entry) => entry === agent)
+}
+
 export function AvatarGeneratePanel({
-  capability,
+  agents,
+  agent,
+  onAgentChange,
   state,
   description,
   onDescriptionChange,
@@ -81,7 +90,10 @@ export function AvatarGeneratePanel({
   onEdit,
   onPick
 }: {
-  capability: Exclude<AvatarGenerationCapability, { status: 'unavailable' }>
+  /** Installed agents that can make images; never empty here. */
+  agents: AvatarImageAgentStatus[]
+  agent: AvatarImageAgent
+  onAgentChange: (agent: AvatarImageAgent) => void
   state: AvatarGenerationState
   description: string
   onDescriptionChange: (description: string) => void
@@ -94,15 +106,31 @@ export function AvatarGeneratePanel({
 }): React.JSX.Element {
   const t = useTranslate()
   const failureMessage = useFailureMessage()
-  // The run's own agent: main may have picked another one than an older probe named.
-  const agent =
-    (state.kind === 'running' || state.kind === 'error' ? state.agent : undefined) ??
-    capability.agent
-  const agentLabel = AVATAR_IMAGE_AGENT_LABELS[agent]
+  // A run names its own agent; otherwise the picker's choice.
+  const shownAgent =
+    (state.kind === 'running' || state.kind === 'error' ? state.agent : undefined) ?? agent
+  const agentLabel = getAgentLabel(shownAgent)
   const running = state.kind === 'running'
-  const signedOut = capability.status === 'signed-out'
+  const signedOut = agents.find((entry) => entry.agent === agent)?.status === 'signed-out'
+  const catalog = getAgentCatalog()
+  const choices = agents.flatMap(
+    (entry) => catalog.find((candidate) => candidate.id === entry.agent) ?? []
+  )
   return (
     <div className="flex flex-col gap-2">
+      {/* The same agent picker as elsewhere, offering only agents that can make an image here. */}
+      <AgentCombobox
+        agents={choices}
+        value={agent}
+        onValueChange={(next) => {
+          if (isAvatarImageAgent(next)) {
+            onAgentChange(next)
+          }
+        }}
+        disabled={running}
+        allowNarrowTrigger
+        triggerClassName="w-full"
+      />
       {state.kind === 'options' ? (
         <div className="flex flex-col items-center gap-1.5">
           <div className="flex justify-center gap-3">
