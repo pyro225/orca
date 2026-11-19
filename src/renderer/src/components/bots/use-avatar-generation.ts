@@ -13,8 +13,11 @@ import { describesRealPerson } from '../../../../shared/avatar-generation/avatar
 export type AvatarGenerationState =
   | { kind: 'idle' }
   | { kind: 'running'; agent: AvatarImageAgent; startedAt: number }
-  | { kind: 'options'; images: string[] }
-  | { kind: 'error'; error: AvatarGenerationFailure; agent?: AvatarImageAgent }
+  | { kind: 'options'; images: AvatarOption[] }
+  | { kind: 'error'; failure: AvatarGenerationFailure; agent?: AvatarImageAgent }
+
+/** `src` is a data URL. */
+export type AvatarOption = { id: string; src: string }
 
 const UNAVAILABLE: AvatarGenerationCapability = { status: 'unavailable' }
 
@@ -65,7 +68,7 @@ export function useAvatarGeneration(): {
       return
     }
     if (describesRealPerson(text)) {
-      setState({ kind: 'error', error: 'real-person' })
+      setState({ kind: 'error', failure: 'real-person' })
       return
     }
     if (current.current) {
@@ -83,7 +86,10 @@ export function useAvatarGeneration(): {
         if (result.ok) {
           setState({
             kind: 'options',
-            images: result.images.map((image) => `data:${image.mimeType};base64,${image.base64}`)
+            images: result.images.map((image) => ({
+              id: createNonSecureContextUuid(),
+              src: `data:${image.mimeType};base64,${image.base64}`
+            }))
           })
         } else if (result.error === 'canceled') {
           setState({ kind: 'idle' })
@@ -91,13 +97,13 @@ export function useAvatarGeneration(): {
           if (result.error === 'signed-out' && result.agent) {
             setCapability({ status: 'signed-out', agent: result.agent })
           }
-          setState({ kind: 'error', error: result.error, agent: result.agent })
+          setState({ kind: 'error', failure: result.error, agent: result.agent })
         }
       },
       () => {
         if (current.current === requestId) {
           current.current = null
-          setState({ kind: 'error', error: 'failed', agent: capability.agent })
+          setState({ kind: 'error', failure: 'failed', agent: capability.agent })
         }
       }
     )

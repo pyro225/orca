@@ -1,6 +1,10 @@
 // Reading an image-capable agent's one-off run: where its image went, and why it failed.
 import type { AvatarGenerationFailure } from '../../shared/avatar-generation/avatar-generation-contract'
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function jsonLines(stdout: string): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = []
   for (const line of stdout.split('\n')) {
@@ -10,8 +14,8 @@ function jsonLines(stdout: string): Record<string, unknown>[] {
     }
     try {
       const value: unknown = JSON.parse(trimmed)
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        records.push(value as Record<string, unknown>)
+      if (isRecord(value)) {
+        records.push(value)
       }
     } catch {
       // Agents interleave plain log lines with their JSON events.
@@ -60,8 +64,12 @@ export function grokImagePaths(stdout: string): string[] {
     ) {
       continue
     }
-    for (const entry of record.content as { content?: { type?: string; text?: string } }[]) {
-      const path = entry.content?.type === 'text' ? grokToolPath(entry.content.text ?? '') : null
+    for (const entry of record.content) {
+      const content: unknown = isRecord(entry) ? entry.content : null
+      const path =
+        isRecord(content) && content.type === 'text' && typeof content.text === 'string'
+          ? grokToolPath(content.text)
+          : null
       if (path) {
         paths.push(path)
       }

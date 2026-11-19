@@ -1,5 +1,6 @@
 // The picker's Generate tab: describe an avatar, a local agent makes two options, pick one.
 import React, { useEffect, useState } from 'react'
+import { installWindowVisibilityInterval } from '@/lib/window-activity/window-visibility-interval'
 import { CircleAlert, Pencil, RotateCw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -59,8 +60,8 @@ function useFailureMessage(): (error: AvatarGenerationFailure, agent: string) =>
 function Elapsed({ since }: { since: number }): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
+    // A visible clock; hidden windows skip ticks and catch up when shown.
+    return installWindowVisibilityInterval({ run: () => setNow(Date.now()), intervalMs: 1000 })
   }, [])
   const seconds = Math.max(0, Math.floor((now - since) / 1000))
   return (
@@ -103,15 +104,15 @@ export function AvatarGeneratePanel({
           <div className="flex justify-center gap-3">
             {state.images.map((image, index) => (
               <button
-                key={index}
+                key={image.id}
                 type="button"
-                onClick={() => onPick(image)}
+                onClick={() => onPick(image.src)}
                 aria-label={t('bots.avatar.generate.useOption', 'Use option {{n}}', {
                   n: index + 1
                 })}
                 className="overflow-hidden rounded-xl outline-none ring-offset-2 ring-offset-popover transition-shadow hover:ring-2 hover:ring-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
-                <img src={image} alt="" className="size-28 object-cover" />
+                <img src={image.src} alt="" className="size-28 object-cover" />
               </button>
             ))}
           </div>
@@ -178,7 +179,7 @@ export function AvatarGeneratePanel({
       {state.kind === 'error' || (signedOut && state.kind === 'idle') ? (
         <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
           <CircleAlert className="mt-px size-3.5 shrink-0" />
-          {failureMessage(state.kind === 'error' ? state.error : 'signed-out', agentLabel)}
+          {failureMessage(state.kind === 'error' ? state.failure : 'signed-out', agentLabel)}
         </p>
       ) : (
         <p className="text-center text-xs text-muted-foreground">

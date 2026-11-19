@@ -165,7 +165,7 @@ export async function runAvatarImageAgent(input: {
         }
       })
       child.on('error', (error: Error) => {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        if (!('code' in error) || error.code !== 'ENOENT') {
           console.error('[avatar-generation] Image agent failed:', error)
         }
         finish({ kind: 'error' })

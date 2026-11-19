@@ -1,5 +1,5 @@
 // Which installed agent can make an avatar right now: Codex first, then Grok.
-import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
   AvatarGenerationCapability,
@@ -72,9 +72,13 @@ async function probeGrok(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe
   if ((await quickOutput('grok', ['--version'], env)) === null) {
     return 'unavailable'
   }
-  const signedIn =
-    existsSync(join(resolveGrokHomeDir(env ?? process.env), 'auth.json')) || !!env?.XAI_API_KEY
-  return signedIn ? 'ready' : 'signed-out'
+  if (env?.XAI_API_KEY) {
+    return 'ready'
+  }
+  return access(join(resolveGrokHomeDir(env ?? process.env), 'auth.json')).then(
+    () => 'ready',
+    () => 'signed-out'
+  )
 }
 
 export const AVATAR_IMAGE_AGENT_ORDER: readonly AvatarImageAgent[] = ['codex', 'grok']

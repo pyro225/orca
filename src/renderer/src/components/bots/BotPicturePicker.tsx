@@ -299,7 +299,6 @@ export function BotPicturePicker({
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value === 'generate' ? 'generate' : 'choose')}
-          className="gap-3"
         >
           <TabsList size="sm" className="w-full">
             <TabsTrigger value="choose">
