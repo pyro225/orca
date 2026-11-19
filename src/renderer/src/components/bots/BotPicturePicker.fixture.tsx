@@ -1,6 +1,10 @@
 import { defineFixture } from '../../component-fixtures/component-fixture'
 import { stubBots } from '../../component-fixtures/fixture-bots'
 import type { Bot } from '../../../../shared/bot-types'
+import type {
+  AvatarGenerationApi,
+  AvatarGenerationCapability
+} from '../../../../shared/avatar-generation/avatar-generation-contract'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useBotPictureSetting } from '../settings/bots/use-bot-picture-setting'
 import { BotAvatar } from './BotAvatar'
@@ -230,4 +234,113 @@ export const settingsError = defineFixture({
     await openPicture(frame)
     await paste(await artPng(64))
   }
+})
+
+async function artBase64(): Promise<string> {
+  const bytes = new Uint8Array(await (await artPng()).arrayBuffer())
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+/** A local image agent that answers as `result` says, or never (still running). */
+function stubGeneration(
+  capability: AvatarGenerationCapability,
+  result: 'options' | 'running' | 'usage-limit'
+): () => void {
+  return () => {
+    stubUpload()
+    const api: AvatarGenerationApi = {
+      capability: async () => capability,
+      generate: async () => {
+        if (result === 'running') {
+          return new Promise(() => {})
+        }
+        if (result === 'usage-limit') {
+          return { ok: false, error: 'usage-limit', agent: 'codex' }
+        }
+        const base64 = await artBase64()
+        return {
+          ok: true,
+          agent: 'codex',
+          images: [
+            { mimeType: 'image/png', base64 },
+            { mimeType: 'image/png', base64 }
+          ]
+        }
+      },
+      cancel: async () => {}
+    }
+    Reflect.set(window.api, 'avatarGeneration', api)
+  }
+}
+
+async function openGenerate(frame: HTMLElement, description?: string): Promise<void> {
+  await openPicture(frame)
+  const tab = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
+    (entry) => entry.textContent?.includes('Generate')
+  )
+  tab?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+  tab?.click()
+  await settle()
+  if (description === undefined) {
+    return
+  }
+  const box = document.querySelector<HTMLTextAreaElement>('textarea')!
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(
+    box,
+    description
+  )
+  box.dispatchEvent(new Event('input', { bubbles: true }))
+  await settle(100)
+  Array.from(document.querySelectorAll<HTMLButtonElement>('button:not([role="tab"])'))
+    .find((entry) => entry.textContent === 'Generate')
+    ?.click()
+  await settle(600)
+}
+
+const READY: AvatarGenerationCapability = { status: 'ready', agent: 'codex' }
+
+export const generateIdle = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'options'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame)
+})
+
+export const generateRunning = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'running'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame, 'a friendly orange fox astronaut')
+})
+
+export const generateOptions = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'options'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame, 'a friendly orange fox astronaut')
+})
+
+export const generateUsageLimit = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'usage-limit'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame, 'a friendly orange fox astronaut')
+})
+
+export const generateRealPerson = defineFixture({
+  width: 420,
+  setup: stubGeneration(READY, 'options'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame, 'me as a superhero')
+})
+
+export const generateSignedOut = defineFixture({
+  width: 420,
+  setup: stubGeneration({ status: 'signed-out', agent: 'codex' }, 'options'),
+  render: () => <Settings />,
+  interact: (frame) => openGenerate(frame)
 })

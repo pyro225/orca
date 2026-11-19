@@ -1,7 +1,8 @@
-import React, { useRef } from 'react'
+import React, { useRef, useState } from 'react'
 import { Trans } from 'react-i18next'
-import { ChevronLeft, ChevronRight, ImageUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ImageUp, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { i18n } from '@/i18n/i18n'
 import { useTranslate } from '@/i18n/use-translate'
@@ -12,6 +13,8 @@ import { BOT_AVATAR_ACCEPT } from './bot-avatar-intake'
 import { BOT_MASCOT_URLS } from './bot-mascots'
 import { BotPictureIntakeLine, BotPictureVeil, LineAction } from './BotPictureIntakeLine'
 import { useBotAvatarIntake } from './use-bot-avatar-intake'
+import { AvatarGeneratePanel } from './AvatarGeneratePanel'
+import { useAvatarGeneration } from './use-avatar-generation'
 
 type BotPictureFace = { key: string; src: string | null; fallback: string }
 
@@ -149,6 +152,12 @@ export type BotPictureCustom = {
   description: string
 }
 
+function dataUrlBlob(dataUrl: string): Blob {
+  const [header, base64 = ''] = dataUrl.split(',', 2)
+  const type = /^data:([^;]+);base64$/.exec(header)?.[1] ?? 'image/png'
+  return new Blob([Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))], { type })
+}
+
 const CUSTOM_KEY = 'custom'
 const MASCOT_FACES: BotPictureFace[] = PICKABLE_BOT_MASCOT_IDS.map((id) => ({
   key: id,
@@ -208,12 +217,11 @@ export function BotPicturePicker({
   })
   const { line } = intake
   const dropping = line.kind === 'drop'
-  return (
-    <div
-      ref={rootRef}
-      data-dropping={(dropping && intake.outlinePicker) || undefined}
-      className="relative before:pointer-events-none before:absolute before:-inset-x-2.5 before:-top-2.5 before:-bottom-1.5 before:hidden before:rounded-[14px] before:border-[1.5px] before:border-dashed before:border-foreground/35 data-dropping:before:block"
-    >
+  const generation = useAvatarGeneration()
+  const [tab, setTab] = useState<'choose' | 'generate'>('choose')
+  const [description, setDescription] = useState('')
+  const choose = (
+    <>
       <BotPictureCarousel
         faces={faces}
         index={faceIndex}
@@ -276,6 +284,57 @@ export function BotPicturePicker({
           </Tooltip>
         )}
       </BotPictureIntakeLine>
+    </>
+  )
+  return (
+    <div
+      ref={rootRef}
+      data-dropping={(dropping && intake.outlinePicker) || undefined}
+      className="relative before:pointer-events-none before:absolute before:-inset-x-2.5 before:-top-2.5 before:-bottom-1.5 before:hidden before:rounded-[14px] before:border-[1.5px] before:border-dashed before:border-foreground/35 data-dropping:before:block"
+    >
+      {/* Generate shows only when an installed, image-capable agent can run here. */}
+      {generation.capability.status === 'unavailable' ? (
+        choose
+      ) : (
+        <Tabs
+          value={tab}
+          onValueChange={(value) => setTab(value === 'generate' ? 'generate' : 'choose')}
+          className="gap-3"
+        >
+          <TabsList size="sm" className="w-full">
+            <TabsTrigger value="choose">
+              {t('bots.avatar.generate.chooseTab', 'Choose')}
+            </TabsTrigger>
+            <TabsTrigger value="generate">
+              <Sparkles />
+              {t('bots.avatar.generate.tab', 'Generate')}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="choose">{choose}</TabsContent>
+          <TabsContent value="generate">
+            <AvatarGeneratePanel
+              capability={generation.capability}
+              state={generation.state}
+              description={description}
+              onDescriptionChange={(next) => {
+                setDescription(next)
+                if (generation.state.kind === 'error') {
+                  generation.reset()
+                }
+              }}
+              onGenerate={() => generation.generate(description)}
+              onCancel={generation.cancel}
+              onEdit={generation.reset}
+              onPick={(image) => {
+                // The option goes through the same crop and save as an upload.
+                intake.take(dataUrlBlob(image))
+                generation.reset()
+                setTab('choose')
+              }}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
       <input
         ref={fileRef}
         type="file"
