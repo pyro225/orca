@@ -9,6 +9,7 @@ describe('describesRealPerson', () => {
     'my coworker as a wizard',
     'a portrait of me',
     'draw me',
+    'my\nwife riding a dragon',
     'my face as a cartoon',
     'a celebrity in a spacesuit'
   ])('turns away %s', (description) => {

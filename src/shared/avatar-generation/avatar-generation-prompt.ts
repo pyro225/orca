@@ -13,7 +13,8 @@ const REAL_PERSON_PATTERNS: readonly RegExp[] = [
 
 /** Whether a description asks for a real, identifiable person; checked before any agent runs. */
 export function describesRealPerson(description: string): boolean {
-  return REAL_PERSON_PATTERNS.some((pattern) => pattern.test(description))
+  const text = description.replace(/\s+/g, ' ').trim()
+  return REAL_PERSON_PATTERNS.some((pattern) => pattern.test(text))
 }
 
 /** One line, with the user's text as the subject inside fixed instructions. */

@@ -44,8 +44,9 @@ export function useAvatarGeneration(): {
     }
     let live = true
     void api.capability().then(
-      (found) => {
-        if (live) {
+      (found: AvatarGenerationCapability | undefined) => {
+        // A bridge without this namespace (web fallbacks) answers undefined: keep Generate hidden.
+        if (live && found?.status) {
           setCapability(found)
         }
       },
