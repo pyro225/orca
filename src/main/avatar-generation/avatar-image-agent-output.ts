@@ -78,6 +78,37 @@ export function grokImagePaths(stdout: string): string[] {
   return paths
 }
 
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  if (typeof value === 'string') {
+    return value
+  }
+  return isRecord(value) && typeof value.message === 'string' ? value.message : ''
+}
+
+/** Only error events' messages: usage events carry bare numbers like 401 or 429 tokens. */
+export function agentErrorText(stdout: string): string {
+  return jsonLines(stdout)
+    .filter((record) => record.type === 'error' || record.type === 'turn.failed')
+    .map((record) => `${stringField(record, 'message')} ${stringField(record, 'error')}`)
+    .join('\n')
+}
+
+/** What the agent said back: Codex agent messages, or Grok's streamed text. */
+export function agentReplyText(stdout: string): string {
+  return jsonLines(stdout)
+    .map((record) => {
+      if (record.type === 'text' && typeof record.data === 'string') {
+        return record.data
+      }
+      const item = record.type === 'item.completed' ? record.item : null
+      return isRecord(item) && item.type === 'agent_message' && typeof item.text === 'string'
+        ? `${item.text}\n`
+        : ''
+    })
+    .join('')
+}
+
 const USAGE_LIMIT =
   /usage limit|rate limit|quota|too many requests|\b429\b|credits? (exhausted|remaining)|out of credits/i
 const SIGNED_OUT =

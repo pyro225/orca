@@ -3,19 +3,23 @@ import { avatarGenerationPrompt, describesRealPerson } from './avatar-generation
 
 describe('describesRealPerson', () => {
   it.each([
-    'me as a superhero',
+    'draw me as a superhero',
     'my wife riding a dragon',
-    'a photo of Taylor Swift',
-    'the president in a spacesuit',
-    'someone who looks like Keanu Reeves'
+    'me as a superhero',
+    'my coworker as a wizard',
+    'my face as a cartoon',
+    'a celebrity in a spacesuit'
   ])('turns away %s', (description) => {
     expect(describesRealPerson(description)).toBe(true)
   })
 
   it.each([
     'a friendly orange fox astronaut',
-    'a robot owl wizard with a Glowing Staff',
-    'pixel art cat wearing a crown'
+    'a fox that reminds me of autumn',
+    'a photo of a cat',
+    'lion, king of the jungle',
+    'portrait of Sherlock Holmes as a cat',
+    'the queen of hearts card'
   ])('allows %s', (description) => {
     expect(describesRealPerson(description)).toBe(false)
   })

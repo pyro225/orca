@@ -32,7 +32,14 @@ const CAPABILITY_TTL_MS = 30_000
 /** First failure worth telling the user about when no option came back. */
 function combinedFailure(outcomes: AvatarRunOutcome[]): AvatarGenerationResult {
   const errors = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.error]))
-  const order = ['canceled', 'usage-limit', 'signed-out', 'timed-out', 'no-image'] as const
+  const order = [
+    'canceled',
+    'usage-limit',
+    'signed-out',
+    'real-person',
+    'timed-out',
+    'no-image'
+  ] as const
   return { ok: false, error: order.find((error) => errors.includes(error)) ?? 'failed' }
 }
 
@@ -74,21 +81,28 @@ export function registerAvatarGenerationHandlers(
       if (describesRealPerson(description)) {
         return { ok: false, error: 'real-person' }
       }
-      const found = await capability().catch(() => null)
-      if (!found || found.status === 'unavailable') {
-        return { ok: false, error: 'unavailable' }
-      }
-      if (found.status === 'signed-out') {
-        // The next click probes again, so signing in elsewhere takes effect at once.
-        cached = null
-        return { ok: false, error: 'signed-out', agent: found.agent }
-      }
-      const { agent } = found
+      // Registered before any await, so a cancel during the probe still lands.
       runs.get(requestId)?.abort()
       const controller = new AbortController()
       runs.set(requestId, controller)
+      const found = await capability().catch(() => null)
+      if (!found || found.status === 'unavailable' || found.status === 'signed-out') {
+        if (runs.get(requestId) === controller) {
+          runs.delete(requestId)
+        }
+        if (found?.status === 'signed-out') {
+          // The next click probes again, so signing in elsewhere takes effect at once.
+          cached = null
+          return { ok: false, error: 'signed-out', agent: found.agent }
+        }
+        return { ok: false, error: 'unavailable' }
+      }
+      const { agent } = found
       try {
         const env = await envFor(agent)
+        if (controller.signal.aborted) {
+          return { ok: false, error: 'canceled', agent }
+        }
         const prompt = avatarGenerationPrompt(description)
         // Separate runs in parallel: one image each, so two options take as long as one.
         const outcomes = await Promise.all(

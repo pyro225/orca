@@ -84,6 +84,8 @@ export function useAvatarGeneration(): {
         }
         current.current = null
         if (result.ok) {
+          // A run that worked proves the agent ready, whatever an older probe said.
+          setCapability({ status: 'ready', agent: result.agent })
           setState({
             kind: 'options',
             images: result.images.map((image) => ({

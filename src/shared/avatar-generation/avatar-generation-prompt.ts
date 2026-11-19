@@ -1,12 +1,12 @@
 // The words around a user's avatar description, and the check that turns away real people first.
 
+// Only clear asks for a real person; named public figures are left to the agent's own refusal.
 const REAL_PERSON_PATTERNS: readonly RegExp[] = [
-  /\b(me|myself|my face|my photo|my picture|my selfie|selfie)\b/i,
-  /\b(my|our) (wife|husband|partner|boyfriend|girlfriend|son|daughter|kid|child|mom|mother|dad|father|brother|sister|friend|boss|coworker|colleague)\b/i,
+  /(^|\b(of|like|as|depicting|draw|make|show) )(me|myself|us)\b/i,
+  /\b(my|our) (face|photo|picture|selfie|likeness)\b/i,
+  /\b(my|our) (wife|husband|partner|boyfriend|girlfriend|son|daughter|kids?|child|children|mom|mother|dad|father|brother|sister|friend|boss|coworker|colleague)\b/i,
   /\b(real|actual) (person|people|human)\b/i,
-  /\b(photo|photograph|likeness|portrait) of [A-Z][a-z]+ [A-Z][a-z]+/,
-  /\b(celebrity|celebrities|politician|president|prime minister|senator|governor|pope|king of|queen of|ceo of|influencer|youtuber|streamer)\b/i,
-  /\b(looks? like|resembl\w*|in the style of the face of) [A-Z][a-z]+ [A-Z][a-z]+/
+  /\b(celebrity|celebrities|politician)\b/i
 ]
 
 /** Whether a description asks for a real, identifiable person; checked before any agent runs. */
@@ -14,7 +14,7 @@ export function describesRealPerson(description: string): boolean {
   return REAL_PERSON_PATTERNS.some((pattern) => pattern.test(description))
 }
 
-/** One line, so the prompt survives argv on every platform. */
+/** One line, with the user's text as the subject inside fixed instructions. */
 export function avatarGenerationPrompt(description: string): string {
   const subject = description.replace(/\s+/g, ' ').trim()
   return [

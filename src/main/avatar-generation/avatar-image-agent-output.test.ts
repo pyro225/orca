@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { codexImageGenerationEnabled } from './avatar-generation-capability'
 import {
+  agentErrorText,
   classifyAvatarAgentFailure,
   codexThreadId,
   grokImagePaths
@@ -58,6 +59,17 @@ describe('grokImagePaths', () => {
       })
     ].join('\n')
     expect(grokImagePaths(stdout)).toEqual([])
+  })
+})
+
+describe('agentErrorText', () => {
+  it('reads error events and skips token counts that look like status codes', () => {
+    const stdout = [
+      '{"type":"turn.completed","usage":{"input_tokens":401,"output_tokens":429}}',
+      '{"type":"turn.failed","error":{"message":"You\'ve hit your usage limit."}}'
+    ].join('\n')
+    expect(agentErrorText(stdout).trim()).toBe("You've hit your usage limit.")
+    expect(agentErrorText(stdout.split('\n')[0])).toBe('')
   })
 })
 

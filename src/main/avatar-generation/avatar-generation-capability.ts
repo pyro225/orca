@@ -72,7 +72,7 @@ async function probeGrok(env: NodeJS.ProcessEnv | undefined): Promise<AgentProbe
   if ((await quickOutput('grok', ['--version'], env)) === null) {
     return 'unavailable'
   }
-  if (env?.XAI_API_KEY) {
+  if ((env ?? process.env).XAI_API_KEY) {
     return 'ready'
   }
   return access(join(resolveGrokHomeDir(env ?? process.env), 'auth.json')).then(

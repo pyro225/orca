@@ -1,21 +1,29 @@
 // One short, separate agent run that makes a single avatar image, outside the user's chats.
-import { mkdtemp, readdir, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { extname, join } from 'node:path'
+import { extname, isAbsolute, join, relative } from 'node:path'
 import type {
   AvatarGenerationFailure,
   AvatarImageAgent,
   GeneratedAvatarImage
 } from '../../shared/avatar-generation/avatar-generation-contract'
 import { MAX_BOT_AVATAR_SOURCE_BYTES } from '../../shared/bot-avatar'
+import {
+  grokEncodedCwdDirName,
+  resolveGrokSessionsDir
+} from '../../shared/agent-hook-listener/providers/grok/grok-session-paths'
 import { removeTree } from '../../shared/file-write/windows-transient-lock-removal'
 import { spawnSourceControlAgent } from '../text-generation/execution/source-control-agent-launch'
 import { killSourceControlAgentProcess } from '../text-generation/execution/source-control-agent-termination'
 import {
+  agentErrorText,
+  agentReplyText,
   classifyAvatarAgentFailure,
   codexThreadId,
   grokImagePaths
 } from './avatar-image-agent-output'
+
+const PROMPT_FILE = 'prompt.txt'
 
 // Image tools take 30 to 60 s; a stuck run is stopped well before the user gives up on it.
 const AVATAR_RUN_TIMEOUT_MS = 4 * 60_000
@@ -37,15 +45,17 @@ export type AvatarRunOutcome =
   | { ok: true; image: GeneratedAvatarImage }
   | { ok: false; error: AvatarGenerationFailure }
 
-function agentArgs(agent: AvatarImageAgent, cwd: string, prompt: string): string[] {
+function agentArgs(agent: AvatarImageAgent, cwd: string): string[] {
   return agent === 'codex'
     ? // Read-only: the image tool saves under CODEX_HOME by itself; the run needs no shell or writes.
       ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '-s', 'read-only', '-C', cwd, '-']
-    : // Only the image tool is pre-approved, so headless Grok can run nothing else.
+    : // The image tool is the only tool, and dontAsk refuses anything else whatever the user's config.
       [
-        '-p',
-        prompt,
-        '--allow',
+        '--prompt-file',
+        join(cwd, PROMPT_FILE),
+        '--permission-mode',
+        'dontAsk',
+        '--tools',
         'image_gen',
         '--disable-web-search',
         '--output-format',
@@ -53,6 +63,33 @@ function agentArgs(agent: AvatarImageAgent, cwd: string, prompt: string): string
         '--cwd',
         cwd
       ]
+}
+
+function codexImagesDir(stdout: string, env: NodeJS.ProcessEnv | undefined): string | null {
+  const threadId = codexThreadId(stdout)
+  const codexHome = env?.CODEX_HOME ?? process.env.CODEX_HOME ?? join(homedir(), '.codex')
+  return threadId ? join(codexHome, 'generated_images', threadId) : null
+}
+
+/** Grok files each run's session (history and image) under its cwd, which here is the temp folder. */
+async function grokRunSessionDirs(
+  cwd: string,
+  env: NodeJS.ProcessEnv | undefined
+): Promise<string[]> {
+  const sessions = resolveGrokSessionsDir(env ?? process.env)
+  const roots = new Set([sessions, await realpath(sessions).catch(() => sessions)])
+  const names = new Set([cwd, await realpath(cwd).catch(() => cwd)])
+  return [...roots].flatMap((root) =>
+    [...names].flatMap((path) => {
+      const name = grokEncodedCwdDirName(path)
+      return name ? [join(root, name)] : []
+    })
+  )
+}
+
+function isInside(directory: string, path: string): boolean {
+  const inside = relative(directory, path)
+  return inside !== '' && !inside.startsWith('..') && !isAbsolute(inside)
 }
 
 async function newestImageIn(directory: string): Promise<string | null> {
@@ -66,7 +103,7 @@ async function newestImageIn(directory: string): Promise<string | null> {
   let newest: { path: string; mtime: number } | null = null
   for (const name of images) {
     const path = join(directory, name)
-    const { mtimeMs } = await stat(path)
+    const mtimeMs = (await stat(path).catch(() => null))?.mtimeMs ?? 0
     if (!newest || mtimeMs > newest.mtime) {
       newest = { path, mtime: mtimeMs }
     }
@@ -77,17 +114,20 @@ async function newestImageIn(directory: string): Promise<string | null> {
 async function imagePath(
   agent: AvatarImageAgent,
   stdout: string,
-  env: NodeJS.ProcessEnv | undefined
+  env: NodeJS.ProcessEnv | undefined,
+  grokSessionDirs: string[]
 ): Promise<string | null> {
   if (agent === 'grok') {
-    return grokImagePaths(stdout).at(-1) ?? null
+    const path = grokImagePaths(stdout).at(-1)
+    if (!path || !isAbsolute(path)) {
+      return null
+    }
+    // Read only what this run saved in its own session folder, whatever a reply claims.
+    const real = await realpath(path).catch(() => null)
+    return real && grokSessionDirs.some((dir) => isInside(dir, real)) ? real : null
   }
-  const threadId = codexThreadId(stdout)
-  if (!threadId) {
-    return null
-  }
-  const codexHome = env?.CODEX_HOME ?? process.env.CODEX_HOME ?? join(homedir(), '.codex')
-  return newestImageIn(join(codexHome, 'generated_images', threadId))
+  const directory = codexImagesDir(stdout, env)
+  return directory ? newestImageIn(directory) : null
 }
 
 async function readImage(path: string): Promise<GeneratedAvatarImage | null> {
@@ -114,13 +154,22 @@ export async function runAvatarImageAgent(input: {
     return { ok: false, error: 'canceled' }
   }
   const cwd = await mkdtemp(join(tmpdir(), 'orca-avatar-'))
+  let cleanup: string[] = []
   try {
+    if (agent === 'grok') {
+      // A file keeps the prompt out of argv: no Windows shim quoting, nothing in `ps`.
+      await writeFile(join(cwd, PROMPT_FILE), prompt, 'utf-8')
+    }
+    // An abort while the folder was made has no listener to hear it.
+    if (signal.aborted) {
+      return { ok: false, error: 'canceled' }
+    }
     const exit = await new Promise<AgentExit>((resolve) => {
       let child: ReturnType<typeof spawnSourceControlAgent>
       try {
         child = spawnSourceControlAgent({
           binary: agent,
-          args: agentArgs(agent, cwd, prompt),
+          args: agentArgs(agent, cwd),
           cwd,
           env,
           stdinMode: agent === 'codex' ? 'pipe' : 'ignore',
@@ -145,6 +194,9 @@ export async function runAvatarImageAgent(input: {
       }, AVATAR_RUN_TIMEOUT_MS)
       const onAbort = (): void => stop()
       signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) {
+        stop()
+      }
       function finish(value: AgentExit): void {
         if (done) {
           return
@@ -185,18 +237,28 @@ export async function runAvatarImageAgent(input: {
     if (exit.kind === 'timed-out') {
       return { ok: false, error: 'timed-out' }
     }
-    const path = await imagePath(agent, exit.stdout, env)
+    const grokSessionDirs = agent === 'grok' ? await grokRunSessionDirs(cwd, env) : []
+    const codexDir = agent === 'codex' ? codexImagesDir(exit.stdout, env) : null
+    // The run is one-off: its images and Grok session must not pile up or show in session history.
+    cleanup = codexDir ? [codexDir] : grokSessionDirs
+    const path = await imagePath(agent, exit.stdout, env, grokSessionDirs).catch(() => null)
     const image = path ? await readImage(path).catch(() => null) : null
     if (image) {
       return { ok: true, image }
     }
+    const errorText = `${agentErrorText(exit.stdout)}\n${exit.stderr}`
     if (exit.code !== 0) {
-      return { ok: false, error: classifyAvatarAgentFailure(`${exit.stdout}\n${exit.stderr}`) }
+      return { ok: false, error: classifyAvatarAgentFailure(errorText) }
     }
     // A clean exit with no image: the agent declined, often for a real person or a brand.
-    const failure = classifyAvatarAgentFailure(exit.stdout)
+    if (/\bREFUSED\b/.test(agentReplyText(exit.stdout))) {
+      return { ok: false, error: 'real-person' }
+    }
+    const failure = classifyAvatarAgentFailure(errorText)
     return { ok: false, error: failure === 'failed' ? 'no-image' : failure }
   } finally {
-    void removeTree(cwd).catch(() => {})
+    for (const directory of [cwd, ...cleanup]) {
+      void removeTree(directory).catch(() => {})
+    }
   }
 }
