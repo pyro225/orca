@@ -15,10 +15,7 @@ import {
   nativeChatLiveLine,
   type NativeChatLiveLine
 } from '../../../../../../src/shared/native-chat/transcript/row-content/native-chat-live-line'
-import type {
-  NativeChatSettledTurns,
-  NativeChatTurnStatus
-} from '../../../../../../src/shared/native-chat/transcript/turns/native-chat-turn-status'
+import type { NativeChatSettledTurns } from '../../../../../../src/shared/native-chat/transcript/turns/native-chat-turn-status'
 import { isNativeChatRowInLiveWorkingTurn } from '../../../../../../src/shared/native-chat/transcript/turns/native-chat-live-turn-membership'
 import {
   nativeChatTurnMembership,
@@ -44,6 +41,7 @@ export type MobileNativeChatLiveLine = NativeChatLiveLine & { reasoningExpanded:
 export function useMobileNativeChatTurnDisclosure({
   messages,
   enabled,
+  expandCompletedTurns = false,
   isWorking,
   workingStartedAt,
   settledTurns,
@@ -57,6 +55,7 @@ export function useMobileNativeChatTurnDisclosure({
 }: {
   messages: readonly NativeChatMessage[]
   enabled: boolean
+  expandCompletedTurns?: boolean
   isWorking: boolean
   workingStartedAt?: number | null
   settledTurns?: NativeChatSettledTurns | null
@@ -67,17 +66,7 @@ export function useMobileNativeChatTurnDisclosure({
   lineYields?: boolean
   receipts?: ReadonlyMap<string, NativeChatResolvedPrompt> | null
   scopeKey: string
-}): {
-  active: NativeChatTurnStatus | null
-  presentation: MobileNativeChatRunPresentation
-  activeActivityText: string | null
-  onToggleTurn: (turnKey: string) => void
-  resolveRow: (index: number, message: NativeChatMessage) => MobileNativeChatTurnRow
-  listMessages: readonly NativeChatMessage[]
-  waitingRows: readonly { item: NativeChatMessage; index: number }[]
-  liveLine: MobileNativeChatLiveLine | null
-  onToggleReasoning: (key: string) => void
-} {
+}) {
   const {
     rows: sourceRows,
     turnKeys,
@@ -147,7 +136,14 @@ export function useMobileNativeChatTurnDisclosure({
       indexById: new Map(rows.map((message, index) => [message.id, index]))
     }
   }, [enabled, quiet, rows, stopping, turnJournal])
-  const [expandedTurnIds, toggleExpandedTurn] = useMobileNativeChatScopedOpenKeys(scopeKey)
+  const [toggledTurns, toggleTurn] = useMobileNativeChatScopedOpenKeys(scopeKey)
+  const expandedTurnIds = useMemo(
+    () =>
+      expandCompletedTurns
+        ? new Set(Object.keys(completedByTurn).filter((turnKey) => !toggledTurns.has(turnKey)))
+        : toggledTurns,
+    [completedByTurn, expandCompletedTurns, toggledTurns]
+  )
   const [expandedReasoning, toggleReasoning] = useMobileNativeChatScopedOpenKeys(scopeKey)
   const [openSubagentGroups, toggleSubagentGroup] = useMobileNativeChatScopedOpenKeys(scopeKey)
   const [openUserMessages, toggleUserMessage] = useMobileNativeChatScopedOpenKeys(scopeKey)
@@ -202,7 +198,7 @@ export function useMobileNativeChatTurnDisclosure({
     liveReasoningId,
     turnDiffs: summaries
   })
-  const presentation = useMemo(
+  const presentation = useMemo<MobileNativeChatRunPresentation>(
     () => ({ rows, workRuns, turnKeys, receipts }),
     [rows, workRuns, turnKeys, receipts]
   )
@@ -298,7 +294,7 @@ export function useMobileNativeChatTurnDisclosure({
     active,
     presentation,
     activeActivityText,
-    onToggleTurn: toggleExpandedTurn,
+    onToggleTurn: toggleTurn,
     resolveRow,
     listMessages: waiting.listMessages,
     waitingRows: waiting.waitingRows,

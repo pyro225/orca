@@ -24,6 +24,7 @@ export function Result(_props: {
 export function Harness({
   messages,
   enabled,
+  expandCompletedTurns,
   isWorking = true,
   settledTurns,
   turnJournal,
@@ -34,6 +35,7 @@ export function Harness({
 }: {
   messages: readonly NativeChatMessage[]
   enabled: boolean
+  expandCompletedTurns?: boolean
   isWorking?: boolean
   settledTurns?: NativeChatSettledTurns
   turnJournal?: NativeChatTurnJournal
@@ -45,6 +47,7 @@ export function Harness({
   const disclosure = useMobileNativeChatTurnDisclosure({
     messages,
     enabled,
+    expandCompletedTurns,
     isWorking,
     settledTurns,
     turnJournal,

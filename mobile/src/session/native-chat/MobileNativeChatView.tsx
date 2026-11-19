@@ -11,7 +11,7 @@ import {
   MobileNativeChatDisclosureContext,
   useMobileNativeChatDisclosures
 } from './transcript/viewport/mobile-native-chat-disclosure-store'
-import { type NativeScrollEvent, type NativeSyntheticEvent, View } from 'react-native'
+import { type NativeScrollEvent, type NativeSyntheticEvent, Platform, View } from 'react-native'
 import { MobileNativeChatSendErrorBanner } from './status/MobileNativeChatSendErrorBanner'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
@@ -206,6 +206,7 @@ export function MobileNativeChatView({
   const turns = useMobileNativeChatTurnDisclosure({
     messages: data,
     enabled: true,
+    expandCompletedTurns: Platform.OS === 'android',
     isWorking: agentWorking === true,
     workingStartedAt,
     settledTurns,

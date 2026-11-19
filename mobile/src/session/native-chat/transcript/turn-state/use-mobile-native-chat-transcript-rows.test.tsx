@@ -34,6 +34,48 @@ describe('how the structured lane draws its rows, as desktop does', () => {
     renderer = null
   })
 
+  it('opens completed Android turns independently, including prepended history', () => {
+    const older = [userMessage('u1'), answer('intro1'), toolRow('tool1'), answer('final1')]
+    const newer = [userMessage('u2'), answer('intro2'), toolRow('tool2'), answer('final2')]
+    const settledTurns = new Map([
+      ['u1', { startedAt: 0, workedSeconds: 3 }],
+      ['u2', { startedAt: 4_000, workedSeconds: 7 }]
+    ])
+    const tree = (messages: NativeChatMessage[], isWorking: boolean) =>
+      createElement(Harness, {
+        messages,
+        enabled: true,
+        expandCompletedTurns: true,
+        isWorking,
+        settledTurns: isWorking ? undefined : settledTurns
+      })
+    const read = () => renderer!.root.findByType(Result).props.disclosure
+    const visible = () => {
+      const { listMessages, resolveRow } = read()
+      return listMessages.flatMap((row: NativeChatMessage, index: number) =>
+        resolveRow(index, row).foldedAway ? [] : [row.id]
+      )
+    }
+
+    act(() => {
+      renderer = create(tree(newer, true))
+    })
+    expect(visible()).toEqual(['u2', 'intro2', 'tool2', 'final2'])
+    act(() => renderer!.update(tree(newer, false)))
+    expect(visible()).toEqual(['u2', 'intro2', 'tool2', 'final2'])
+    act(() => renderer!.update(tree([...older, ...newer], false)))
+    const all = ['u1', 'intro1', 'tool1', 'final1', 'u2', 'intro2', 'tool2', 'final2']
+    expect(visible()).toEqual(all)
+    expect(read().resolveRow(3, older[3])).toMatchObject({ turnKey: 'u1', turnExpanded: true })
+    expect(read().resolveRow(7, newer[3])).toMatchObject({ turnKey: 'u2', turnExpanded: true })
+
+    act(() => read().onToggleTurn('u1'))
+    expect(visible()).toEqual(['u1', 'final1', 'u2', 'intro2', 'tool2', 'final2'])
+    expect(read().resolveRow(3, older[3])).toMatchObject({ turnKey: 'u1', turnExpanded: false })
+    act(() => read().onToggleTurn('u1'))
+    expect(visible()).toEqual(all)
+  })
+
   it('renders generated output in the shipping answer list through collapse and expansion', () => {
     const generated: NativeChatMessage = {
       ...answer('image'),

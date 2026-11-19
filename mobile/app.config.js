@@ -3,8 +3,19 @@
 const APS_ENVIRONMENT =
   process.env.ORCA_IOS_APS_ENVIRONMENT === 'production' ? 'production' : 'development'
 
+// Sideloaded builds have a separate data directory and no matching Firebase client.
+const SIDELOAD_ANDROID = process.env.ORCA_ANDROID_SIDELOAD === '1'
+
 module.exports = ({ config }) => ({
   ...config,
+  ...(SIDELOAD_ANDROID && {
+    name: 'Orca Chat',
+    android: {
+      ...config.android,
+      package: 'dev.orca.chat',
+      googleServicesFile: undefined
+    }
+  }),
   // `expo run` installs a dev-client build cached for the current native fingerprint instead of
   // rebuilding; scripts/native-client.mjs populates the cache.
   buildCacheProvider: { plugin: './scripts/native-build-cache.cjs' },
