@@ -10,13 +10,16 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 mkdir -p "$1"
 output_dir=$(cd "$1" && pwd)
 image=orca-local-android:24-sdk37
+build_memory=${ORCA_ANDROID_BUILD_MEMORY:-4g}
 
 docker build --platform linux/amd64 -t "$image" - < "$repo_dir/mobile/scripts/local-android/Dockerfile"
-docker run --rm -i --platform linux/amd64 \
+docker run --rm -i --platform linux/amd64 --cpus=3 \
+  --memory "$build_memory" --memory-swap "$build_memory" \
   --mount "type=bind,source=$repo_dir,target=/src" \
   --mount "type=bind,source=$output_dir,target=/output" \
   --mount type=volume,source=orca-chat-android-signing,target=/signing \
   --mount type=volume,source=orca-chat-android-gradle,target=/root/.gradle \
+  --env CMAKE_BUILD_PARALLEL_LEVEL=2 \
   --env ORCA_ANDROID_SIDELOAD=1 \
   "$image" bash -se <<'BUILD'
 corepack pnpm install --frozen-lockfile
@@ -46,10 +49,8 @@ apk=app/build/outputs/apk/release/app-release.apk
 tools="$ANDROID_HOME/build-tools/37.0.0"
 "$tools/apksigner" verify --print-certs "$apk"
 "$tools/aapt" dump badging "$apk" | grep "^package: name='dev.orca.chat'"
-unzip -l "$apk" assets/index.android.bundle
-unzip -Z1 "$apk" | grep -qx assets/index.android.bundle
+unzip -t "$apk" assets/index.android.bundle
 cp "$apk" /output/orca-chat-arm64.apk
 cd /output
 sha256sum orca-chat-arm64.apk
-adb devices -l
 BUILD

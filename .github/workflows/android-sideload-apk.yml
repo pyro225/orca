@@ -1,0 +1,31 @@
+name: Android sideload APK
+
+on:
+  push:
+    branches: [android-expanded-chat-turns]
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    if: github.repository == 'pyro225/orca'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ORCA_ANDROID_BUILD_MEMORY: 12g
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Assemble and verify signed APK
+        run: bash mobile/scripts/local-android/build.sh "$RUNNER_TEMP/orca-apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-chat-arm64
+          path: ${{ runner.temp }}/orca-apk/orca-chat-arm64.apk
+          if-no-files-found: error
+          retention-days: 30
